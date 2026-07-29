@@ -22,17 +22,9 @@ GitHub: NMsby
 
 The project's dependencies are installed inside a virtual environment in WSL Ubuntu-22.04, at /home/nelson/projects/clinic-booking-api/.venv, not system wide. A bare python3, pip, pytest, alembic, or uvicorn command run from this shell resolves to a Windows stub rather than WSL. Even a plain wsl python3 reaches WSL's system Python rather than this project's virtual environment.
 
-Two patterns are confirmed working from this shell for reaching the venv interpreter directly.
+The reliable pattern, confirmed working on every command tried so far, including multi-argument commands with flags, is: prefix with MSYS_NO_PATHCONV=1 and invoke the virtual environment's interpreter by its full path. For example: MSYS_NO_PATHCONV=1 wsl /home/nelson/projects/clinic-booking-api/.venv/bin/python -m pytest, MSYS_NO_PATHCONV=1 wsl /home/nelson/projects/clinic-booking-api/.venv/bin/python -m pip install followed by a package name, MSYS_NO_PATHCONV=1 wsl /home/nelson/projects/clinic-booking-api/.venv/bin/python -m alembic upgrade head. Use this pattern as the default for every venv command.
 
-Pattern 1: MSYS_NO_PATHCONV=1 wsl /home/nelson/projects/clinic-booking-api/.venv/bin/python
-
-The MSYS_NO_PATHCONV=1 prefix prevents Git Bash from converting the Unix path to a Windows path before passing it to wsl. Without it, wsl receives a path like C:/Program Files/Git/home/nelson/projects/clinic-booking-api/.venv/bin/python and fails with: No such file or directory. Always prefix MSYS_NO_PATHCONV=1 when using this pattern.
-
-Pattern 2: wsl bash -c '/home/nelson/projects/clinic-booking-api/.venv/bin/python -c "..."'
-
-Wrapping the command in wsl bash -c with single quotes passes the path to WSL's bash without Git Bash touching it. This pattern is also confirmed working and is more natural for multi-argument commands such as running a module.
-
-Use either pattern for all venv commands: pytest, uvicorn, pip install, alembic. If a command returns a Windows path such as C:/Program Files/Git/home/... inside a No such file or directory error, that is the specific symptom that Git Bash converted the path before wsl received it. Apply pattern 1 or pattern 2 to fix it.
+An alternative pattern, wsl bash -c '...' wrapping the whole command in single quotes, has worked for simple single-argument invocations such as a bare python -c "..." check, but has also failed on multi-argument commands with flags, such as pip uninstall -y, with the same underlying symptom, a Windows path such as C:/Program Files/Git/... appearing inside a No such file or directory error. Do not rely on this pattern for pip, pytest, alembic, or uvicorn commands. Use the MSYS_NO_PATHCONV pattern above instead.
 
 ## Absolute Rules (no exceptions)
 
