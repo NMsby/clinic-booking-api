@@ -7,18 +7,16 @@ from app.database import Base
 
 if TYPE_CHECKING:
     from app.models.appointment import Appointment
-    from app.models.working_hours import WorkingHours
 
 
-class Doctor(Base):
-    __tablename__ = "doctors"
+class Patient(Base):
+    __tablename__ = "patients"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    phone: Mapped[str] = mapped_column(String(50), nullable=False)
 
-    working_hours: Mapped[list["WorkingHours"]] = relationship(
-        back_populates="doctor", cascade="all, delete-orphan", passive_deletes=True
-    )
     appointments: Mapped[list["Appointment"]] = relationship(
-        back_populates="doctor", passive_deletes=True
+        back_populates="patient", passive_deletes=True
     )
