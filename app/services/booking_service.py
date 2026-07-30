@@ -16,6 +16,7 @@ from app.services.exceptions import (
     InsufficientLeadTimeError,
     OffSlotGridError,
     OutsideWorkingHoursError,
+    PatientNotFound,
     SlotAlreadyBookedError,
 )
 from app.services.schedule_utils import (
@@ -138,3 +139,37 @@ async def reschedule_appointment(
         raise
     await db.refresh(appointment)
     return appointment
+
+
+async def get_patient_appointments(
+    db: AsyncSession,
+    patient_id: int,
+    now: datetime | None = None,
+) -> list[Appointment]:
+    """Return this patient's upcoming appointments, sorted by start_time.
+    Only booked appointments are included, a cancelled appointment is not
+    something the patient needs to prepare for or attend. An appointment
+    starting at exactly now is included as upcoming, not excluded, since
+    it has not yet finished and the patient may still need to see it,
+    this matches the inclusive boundary convention already used
+    throughout schedule_utils. now defaults to the real current time and
+    exists as a parameter only so tests can supply a fixed value instead
+    of depending on the real clock.
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    patient = await db.get(Patient, patient_id)
+    if patient is None:
+        raise PatientNotFound(patient_id)
+
+    result = await db.execute(
+        select(Appointment)
+        .where(
+            Appointment.patient_id == patient_id,
+            Appointment.status == AppointmentStatus.BOOKED,
+            Appointment.start_time >= now,
+        )
+        .order_by(Appointment.start_time)
+    )
+    return list(result.scalars().all())
