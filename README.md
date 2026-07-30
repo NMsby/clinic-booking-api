@@ -137,6 +137,24 @@ A few things were left out on purpose rather than by oversight.
 
 **updated_at maintenance.** The updated_at timestamp is maintained by SQLAlchemy at the ORM layer whenever an UPDATE is issued through the application, not by a database level trigger, since PostgreSQL has no equivalent to MySQL's ON UPDATE CURRENT_TIMESTAMP; a raw SQL UPDATE that bypasses the application would leave updated_at unchanged, and a PostgreSQL trigger that fires before each update could enforce this at the database level if that guarantee becomes necessary.
 
+## Deployment and CI/CD
+
+The application is deployed to Google Cloud Run and is reachable at:
+
+**https://clinic-booking-api-fkunbo7qka-ew.a.run.app**
+
+### Branch and trigger
+
+Deployment is triggered by a push to `main`. `develop` is this project's integration branch, where every feature branch is reviewed and merged first; `main` was reserved from the start as the actual production branch, so merging `develop` into `main` is the deliberate release step that triggers a deployment, not something that happens as a side effect of ongoing integration work.
+
+### What the pipeline does
+
+Two GitHub Actions workflows cover this section's requirements.
+
+`ci.yml` runs on every pull request into `develop` or `main`. It starts a real PostgreSQL service container, applies the current Alembic migration against it, then runs the full pytest suite against that live database, not a mock or an in-memory substitute.
+
+`deploy.yml` runs on every push to `main`. It authenticates to Google Cloud through Workload Identity Federation, exchanging GitHub's own OIDC token for short lived credentials rather than a downloaded service account key, builds the Docker image, pushes it to Artifact Registry, then deploys it to Cloud Run. The deployed container connects to the production Cloud SQL instance through Cloud Run's native Unix socket integration, with the database connection string held in Secret Manager and readable only by the service's own dedicated runtime identity, not by the pipeline that deploys it.
+
 ## Testing the Live API
 
 The deployed application is reachable at:
