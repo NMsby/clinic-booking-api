@@ -18,6 +18,14 @@ GitHub: NMsby
 - GCP Cloud Run
 - GitHub Actions
 
+## Running Python commands
+
+The project's dependencies are installed inside a virtual environment in WSL Ubuntu-22.04, at /home/nelson/projects/clinic-booking-api/.venv, not system wide. A bare python3, pip, pytest, alembic, or uvicorn command run from this shell resolves to a Windows stub rather than WSL. Even a plain wsl python3 reaches WSL's system Python rather than this project's virtual environment.
+
+The reliable pattern, confirmed working on every command tried so far, including multi-argument commands with flags, is: prefix with MSYS_NO_PATHCONV=1 and invoke the virtual environment's interpreter by its full path. For example: MSYS_NO_PATHCONV=1 wsl /home/nelson/projects/clinic-booking-api/.venv/bin/python -m pytest, MSYS_NO_PATHCONV=1 wsl /home/nelson/projects/clinic-booking-api/.venv/bin/python -m pip install followed by a package name, MSYS_NO_PATHCONV=1 wsl /home/nelson/projects/clinic-booking-api/.venv/bin/python -m alembic upgrade head. Use this pattern as the default for every venv command.
+
+An alternative pattern, wsl bash -c '...' wrapping the whole command in single quotes, has worked for simple single-argument invocations such as a bare python -c "..." check, but has also failed on multi-argument commands with flags, such as pip uninstall -y, with the same underlying symptom, a Windows path such as C:/Program Files/Git/... appearing inside a No such file or directory error. Do not rely on this pattern for pip, pytest, alembic, or uvicorn commands. Use the MSYS_NO_PATHCONV pattern above instead.
+
 ## Absolute Rules (no exceptions)
 
 - Never add Co-Authored-By lines to commit messages. All commits are by Nelson Masbayi Muyodi only.

@@ -1,0 +1,52 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: clinic-booking-api-503815
+          workload_identity_provider: projects/390011308650/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions-provider
+          service_account: github-actions-deploy@clinic-booking-api-503815.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
+
+      - name: Build image
+        run: |
+          docker build \
+            -t europe-west1-docker.pkg.dev/clinic-booking-api-503815/clinic-booking-api/clinic-booking-api:${{ github.sha }} \
+            -t europe-west1-docker.pkg.dev/clinic-booking-api-503815/clinic-booking-api/clinic-booking-api:latest \
+            .
+
+      - name: Push image
+        run: |
+          docker push europe-west1-docker.pkg.dev/clinic-booking-api-503815/clinic-booking-api/clinic-booking-api:${{ github.sha }}
+          docker push europe-west1-docker.pkg.dev/clinic-booking-api-503815/clinic-booking-api/clinic-booking-api:latest
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy clinic-booking-api \
+            --image=europe-west1-docker.pkg.dev/clinic-booking-api-503815/clinic-booking-api/clinic-booking-api:${{ github.sha }} \
+            --region=europe-west1 \
+            --platform=managed \
+            --service-account=clinic-booking-runtime@clinic-booking-api-503815.iam.gserviceaccount.com \
+            --add-cloudsql-instances=clinic-booking-api-503815:europe-west1:clinic-booking-db \
+            --set-secrets=DATABASE_URL=DATABASE_URL:latest \
+            --allow-unauthenticated \
+            --quiet
