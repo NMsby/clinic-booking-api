@@ -136,3 +136,125 @@ A few things were left out on purpose rather than by oversight.
 **Status enum validation.** Status values are validated by the Python enum at the ORM layer only; a raw SQL statement that bypasses the application would not be checked, and a database level CHECK constraint was deliberately omitted, since enforcing one would mean manually dropping and recreating a named constraint on every future migration that changes the status value set, the exact kind of change already discussed in Reschedule and status above.
 
 **updated_at maintenance.** The updated_at timestamp is maintained by SQLAlchemy at the ORM layer whenever an UPDATE is issued through the application, not by a database level trigger, since PostgreSQL has no equivalent to MySQL's ON UPDATE CURRENT_TIMESTAMP; a raw SQL UPDATE that bypasses the application would leave updated_at unchanged, and a PostgreSQL trigger that fires before each update could enforce this at the database level if that guarantee becomes necessary.
+
+## Testing the Live API
+
+The deployed application is reachable at:
+
+**https://clinic-booking-api-fkunbo7qka-ew.a.run.app**
+
+Interactive API documentation, generated directly from the running 
+application, is available at:
+
+**https://clinic-booking-api-fkunbo7qka-ew.a.run.app/docs**
+
+This is the easiest way to explore and call every endpoint directly from a 
+browser, with example request bodies already filled in for each route.
+
+### Seeded doctors
+
+The production database has been seeded with five doctors so the booking 
+flow can be tested immediately, without any setup:
+
+| id | name | working days | hours |
+|---|---|---|---|
+| 1 | Dr. Sarah Kamau | Monday to Friday | 09:00 to 17:00 |
+| 2 | Dr. James Otieno | Monday to Friday | 09:00 to 17:00 |
+| 3 | Dr. Grace Wanjiru | Monday to Friday | 09:00 to 17:00 |
+| 4 | Dr. Peter Mwangi | Monday to Friday | 09:00 to 17:00 |
+| 5 | Dr. Faith Achieng | Monday, Tuesday, Thursday, Friday (closed Wednesdays) | 09:00 to 17:00 |
+
+Dr. Faith Achieng's schedule is deliberately missing a Wednesday working 
+hours row, demonstrating that the absence of a row means the doctor does 
+not work that day, rather than an error or an empty result.
+
+### Trying it out
+
+Check availability for a seeded doctor on any upcoming weekday, for 
+example:
+
+`GET /doctors/1/availability?date=YYYY-MM-DD`
+
+Since working hours are stored per day of week, not tied to one specific 
+calendar date, any future Monday through Friday date will return the same 
+pattern of open slots for doctors 1 through 4, and the same pattern minus 
+Wednesdays for doctor 5.
+
+One thing worth knowing before testing a booking directly: appointments 
+must be at least one hour out from the current time. A booking attempt 
+for a slot happening in the next hour will correctly return a 400 rather 
+than succeed, that is the documented lead time rule working as intended, 
+not a fault.
+
+## Section 4: AI Reflection
+
+**1. What did you use AI for across the four sections?**
+
+Across all four sections: working through system design and architectural 
+trade-offs before any code was written, implementing the database layer, 
+business logic, and API routes, and diagnosing failures during testing and 
+deployment, verifying fixes against actual output rather than assuming 
+correctness from a plausible-looking explanation.
+
+**2. Give one example where an AI suggestion improved your work. What did 
+you prompt it with?**
+
+The double booking constraint. My first instinct was an application-level 
+check, query for a conflicting appointment, then insert if none exists. I 
+asked what happens when two requests for the identical slot arrive close 
+enough together that both pass that check before either has committed, a 
+race condition no amount of application-level checking closes on its own. 
+The fix was a PostgreSQL partial unique index, 
+`UNIQUE (doctor_id, start_time) WHERE status = 'booked'`, so the database 
+itself guarantees the invariant rather than relying on a check-then-act 
+pattern with an inherent gap. The service layer catches the resulting 
+`IntegrityError` and identifies it by its structured constraint name 
+through psycopg3's diagnostic fields, `e.orig.diag.constraint_name`, 
+rather than string-matching the Postgres error message, since that text 
+is not guaranteed stable across server versions. This was proven directly: 
+two simultaneous booking attempts for the same slot, fired together with 
+`asyncio.gather`, confirmed that exactly one succeeded and the other 
+failed on the constraint itself, not on a race that happened to resolve 
+favorably.
+
+**3. Give one example where AI output was wrong or incomplete and how you 
+caught it.**
+
+A slot grid check, `is_on_slot_grid`, initially compared a UTC timestamp's 
+raw minute value directly against the 30 minute grid. This is wrong in 
+general: it only works because Nairobi's UTC+3 offset happens to be a 
+whole number of hours. I caught, before that code was ever committed, 
+that a clinic at a half hour offset, UTC+5:30 for example, would have its 
+UTC minute value differ from its local minute value, and the check would 
+silently misclassify valid grid alignment as invalid or vice versa. The 
+fix converts to the clinic's local time zone first, via a shared 
+`to_clinic_local` function, before checking the minute boundary at all, so 
+the function is correct by construction rather than correct only because 
+of one clinic's particular offset.
+
+**4. Name two decisions you made without AI. Why did you trust your own 
+judgment there?**
+
+First, choosing psycopg3 over the alternatives once the driver decision 
+came down to how each one interacts with Alembic specifically. psycopg3 
+supports both a synchronous and an asynchronous interface through the same 
+package, which means Alembic can run its standard synchronous migration 
+template completely unmodified while the application itself runs fully 
+async, whereas asyncpg would have required Alembic's async template with 
+`run_sync` bridging layered in just to keep the two compatible. The detail 
+that mattered in practice: the connection URL scheme for Alembic and for 
+the application's own async engine both resolve to `postgresql+psycopg://`, 
+with SQLAlchemy dispatching correctly between sync and async modes from 
+that one shared string, so the switch from `psycopg2-binary` meant 
+updating one scheme in `.env.example`, not maintaining two different 
+drivers or two different URL conventions across migrations and the 
+running app.
+
+Second, catching an error in a test before ever running it. A lead time 
+test was constructed in a way that would have been rejected for the wrong 
+reason entirely, failing because the requested time was outside the 
+doctor's working hours rather than because it was too soon before the 
+current time, the actual thing the test was meant to prove. I caught this 
+by tracing through the actual clock arithmetic by hand, 8:30 local time 
+genuinely is before a 9:00 opening, not by trusting that a plausible 
+looking test was correct because it had already been written.
