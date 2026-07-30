@@ -1,13 +1,14 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app.routes import appointments, doctors
+from app.routes import appointments, doctors, patients
 from app.services.exceptions import BusinessRuleViolation, ConflictError, NotFoundError
 
 app = FastAPI(title="Clinic Booking API")
 
 app.include_router(appointments.router)
 app.include_router(doctors.router)
+app.include_router(patients.router)
 
 
 @app.exception_handler(NotFoundError)
