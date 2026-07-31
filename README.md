@@ -137,6 +137,71 @@ A few things were left out on purpose rather than by oversight.
 
 **updated_at maintenance.** The updated_at timestamp is maintained by SQLAlchemy at the ORM layer whenever an UPDATE is issued through the application, not by a database level trigger, since PostgreSQL has no equivalent to MySQL's ON UPDATE CURRENT_TIMESTAMP; a raw SQL UPDATE that bypasses the application would leave updated_at unchanged, and a PostgreSQL trigger that fires before each update could enforce this at the database level if that guarantee becomes necessary.
 
+## Running Locally
+
+### Prerequisites
+
+- Python 3.12
+- Docker and Docker Compose, for PostgreSQL
+
+### Setup
+
+1. Clone the repository and create a virtual environment:
+
+```bash
+   git clone https://github.com/NMsby/clinic-booking-api.git
+   cd clinic-booking-api
+   python3.12 -m venv .venv
+   source .venv/bin/activate
+```
+
+2. Install dependencies:
+
+```bash
+   pip install -r requirements-dev.txt
+```
+
+3. Copy the example environment file:
+
+```bash
+   cp .env.example .env
+```
+
+   The default values in `.env.example` work as is for local development. 
+   `DATABASE_URL` must reference the same `POSTGRES_USER`, 
+   `POSTGRES_PASSWORD`, and `POSTGRES_DB` values set above it in the same 
+   file.
+
+4. Start PostgreSQL:
+
+```bash
+   docker compose up -d
+```
+
+5. Apply migrations:
+
+```bash
+   alembic upgrade head
+```
+
+6. Run the application:
+
+```bash
+   uvicorn app.main:app --reload
+```
+
+   The API is available at `http://127.0.0.1:8000`, with interactive 
+   documentation at `http://127.0.0.1:8000/docs`.
+
+### Running tests
+
+```bash
+pytest tests/ -v
+```
+
+Tests run against the same PostgreSQL instance started above and require 
+it to be running.
+
 ## Deployment and CI/CD
 
 The application is deployed to Google Cloud Run and is reachable at:
